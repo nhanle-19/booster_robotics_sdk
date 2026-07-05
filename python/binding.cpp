@@ -406,7 +406,10 @@ PYBIND11_MODULE(booster_robotics_sdk_python, m) {
                 return client.Init(robot_name);
             },
             "Init with robot name")
-        .def("SendApiRequest", &robot::b1::B1LocoClient::SendApiRequest, py::arg("api_id"), py::arg("param"),
+        .def("SendApiRequest",
+             py::overload_cast<robot::b1::LocoApiId, const std::string &>(
+                 &robot::b1::B1LocoClient::SendApiRequest),
+             py::arg("api_id"), py::arg("param"),
              R"pbdoc(
                 /**
                  * @brief Send API request to B1 robot
