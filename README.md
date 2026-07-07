@@ -8,17 +8,12 @@ Booster T1 from a laptop, then run SDK examples on the robot motion board.
 Connect to the same network as the robot, then SSH to the motion board:
 
 ```bash
-ssh master@192.168.50.159
+ssh master@<booster-host>
 ```
 
-If that IP changes, scan your local subnet from the laptop and try the SSH
-hosts that respond:
-
-```bash
-ip -br addr
-for i in $(seq 1 254); do ping -c 1 -W 1 192.168.50.$i >/dev/null && echo 192.168.50.$i; done
-ssh master@192.168.50.X
-```
+Use the robot hostname, mDNS name, or a local SSH alias for `<booster-host>`.
+Keep robot IP addresses in your local shell history or SSH config, not in this
+README.
 
 The useful board should have the SDK repo:
 
@@ -78,13 +73,13 @@ sudo make install
 Copy the local script to the robot from the laptop:
 
 ```bash
-scp /home/furustm/booster_robotics_sdk/example/low_level/t1_imu_subscriber.py master@192.168.50.159:~/booster_robotics_sdk/example/low_level/
+scp /home/furustm/booster_robotics_sdk/example/low_level/t1_imu_subscriber.py master@<booster-host>:~/booster_robotics_sdk/example/low_level/
 ```
 
 Run it on the robot:
 
 ```bash
-ssh master@192.168.50.159
+ssh master@<booster-host>
 cd ~/booster_robotics_sdk
 python3 example/low_level/t1_imu_subscriber.py
 ```
@@ -108,10 +103,17 @@ python3 example/low_level/t1_imu_subscriber.py --no-log
 python3 example/low_level/t1_imu_subscriber.py --log ~/my_t1_log.csv
 ```
 
-Copy logs back to the laptop:
+Find the newest log on the robot:
 
 ```bash
-scp master@192.168.50.159:~/t1_imu_logs/*.csv /home/furustm/booster_robotics_sdk/
+ssh master@<booster-host> 'ls -t ~/t1_imu_logs/*.csv | head -1'
+```
+
+Copy all IMU logs back to the laptop:
+
+```bash
+mkdir -p /home/furustm/booster_robotics_sdk/t1_imu_logs
+scp master@<booster-host>:~/t1_imu_logs/*.csv /home/furustm/booster_robotics_sdk/t1_imu_logs/
 ```
 
 ## 5. Run The Control Example
@@ -124,8 +126,8 @@ ip -br addr
 python3 example/high_level/b1_loco_example_client.py <networkInterface>
 ```
 
-Use the interface name or local IP for the robot network, for example `eth0`,
-`wlan0`, or the board's `192.168.x.x` address.
+Use the interface name or local network address for the robot network, for
+example `eth0`, `wlan0`, or the board's address on that network.
 
 Common commands in that prompt include:
 
