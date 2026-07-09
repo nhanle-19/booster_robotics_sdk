@@ -90,10 +90,14 @@ Expected output:
 Logging IMU data to /home/master/t1_imu_logs/t1_imu_YYYYMMDD_HHMMSS.csv
 Listening for IMU data on rt/low_state
 rpy: ...
+Reached 200 logged datapoints; stopped logging to /home/master/t1_imu_logs/t1_imu_YYYYMMDD_HHMMSS.csv
 ```
 
 `rpy` means roll, pitch, yaw in radians. `acc_z` near `9.8` while standing
 still is normal because it includes gravity.
+
+By default, each CSV file records 200 IMU datapoints from the start of logging
+and then closes automatically.
 
 Useful options:
 
@@ -101,6 +105,7 @@ Useful options:
 python3 example/low_level/t1_imu_subscriber.py --print-period 1.0
 python3 example/low_level/t1_imu_subscriber.py --no-log
 python3 example/low_level/t1_imu_subscriber.py --log ~/my_t1_log.csv
+python3 example/low_level/t1_imu_subscriber.py --max-log-samples 0
 ```
 
 Find the newest log on the robot:
