@@ -90,14 +90,14 @@ Expected output:
 Logging IMU data to /home/master/t1_imu_logs/t1_imu_YYYYMMDD_HHMMSS.csv
 Listening for IMU data on rt/low_state
 rpy: ...
-Reached 200 logged datapoints; stopped logging to /home/master/t1_imu_logs/t1_imu_YYYYMMDD_HHMMSS.csv
+Reached 200 logged datapoints; stopped logging to /home/master/t1_imu_logs/t1_imu_YYYYMMDD_HHMMSS.csv; exiting
 ```
 
 `rpy` means roll, pitch, yaw in radians. `acc_z` near `9.8` while standing
 still is normal because it includes gravity.
 
 By default, each CSV file records 200 IMU datapoints from the start of logging
-and then closes automatically.
+and then the logger exits automatically.
 
 Useful options:
 
@@ -117,11 +117,100 @@ ssh master@<booster-host> 'ls -t ~/t1_imu_logs/*.csv | head -1'
 Copy all IMU logs back to the laptop:
 
 ```bash
-mkdir -p /home/furustm/booster_robotics_sdk/t1_imu_logs
-scp master@<booster-host>:~/t1_imu_logs/*.csv /home/furustm/booster_robotics_sdk/t1_imu_logs/
+mkdir -p /home/furustm/booster_robotics_sdk/logs
+scp master@<booster-host>:~/t1_imu_logs/*.csv /home/furustm/booster_robotics_sdk/logs/
 ```
 
-## 5. Run The Control Example
+Plot the retrieved logs:
+
+```bash
+cd /home/furustm/booster_robotics_sdk
+python3 plot_file.py
+```
+
+This saves:
+
+```text
+plot/acceleration_x.png
+plot/acceleration_y.png
+plot/acceleration_z.png
+plot/gyro_roll_angular_velocity.png
+plot/gyro_pitch_angular_velocity.png
+plot/gyro_yaw_angular_velocity.png
+```
+
+## 5. Run The IMU Calibration Policy Scaffold
+
+The calibration scaffold observes low-state data at 50 Hz, builds an IMU plus
+proprioceptive history window, estimates a baseline IMU bias, and can publish a
+constant low-level joint target with custom `kp`/`kd`.
+
+Start in observe-only mode first:
+
+```bash
+cd ~/booster_robotics_sdk
+python3 example/low_level/imu_calibration_policy.py --max-steps 500
+```
+
+When the robot is ready for custom low-level control, explicitly enable
+publishing. The script waits for low-state data, asks for ENTER, publishes an
+initial measured-position hold command, requests `RobotMode.kCustom`, then ramps
+to the configured target:
+
+```bash
+python3 example/low_level/imu_calibration_policy.py <networkInterface> --enable-control
+```
+
+If you want to switch the robot to Custom mode yourself, use:
+
+```bash
+python3 example/low_level/imu_calibration_policy.py <networkInterface> --enable-control --manual-custom-mode
+```
+
+The loop defaults to `--control-dt 0.02` and `--history-steps 100`. Default joint
+targets/`kp`/`kd` match the T1 IMU calibration task: the lying pose from
+`T1_IMU_CALIBRATION_LYING_POSE`, with base gains from
+`example/low_level/data/t1_default_kpkd_jointorque.csv` scaled by the task's
+stiffness/damping factors. The composed command table is written to
+`example/low_level/data/t1_imu_calibration_command.csv`.
+
+Override with either that CSV or a JSON command config:
+
+```bash
+python3 example/low_level/imu_calibration_policy.py <networkInterface> \
+  --enable-control \
+  --config example/low_level/data/t1_imu_calibration_command.csv
+```
+
+```json
+{
+  "cmd_type": "SERIAL",
+  "q": [0.0, 0.0],
+  "kp": [5.0, 5.0],
+  "kd": [0.1, 0.1],
+  "dq": 0.0,
+  "tau": 0.0,
+  "weight": 0.0
+}
+```
+
+Expand each JSON array to 23 values before using it on the robot.
+
+Safety defaults:
+
+```text
+--ramp-time 2.0
+--max-joint-velocity 0.5
+--max-abs-roll-pitch 2.0
+--return-mode prepare
+```
+
+During control, type `x` or `stop` and press ENTER to request a software stop
+through `RobotMode.kDamping`. This is not a hardware e-stop; it still depends on
+the Python process, DDS/network communication, and the robot accepting the mode
+request. Keep a physical stop/safety operator available.
+
+## 6. Run The Control Example
 
 The high-level locomotion client is interactive:
 
@@ -146,12 +235,13 @@ stop  stop motion
 Use a clear test area and keep the robot supported or ready to stop before
 sending motion commands.
 
-## 6. Local Development Notes
+## 7. Local Development Notes
 
 Compile-check the T1 IMU logger locally:
 
 ```bash
 python3 -m py_compile example/low_level/t1_imu_subscriber.py
+python3 -m py_compile example/low_level/imu_calibration_policy.py
 ```
 
 Only copy files to the robot after local syntax checks pass.

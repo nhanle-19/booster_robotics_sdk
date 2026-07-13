@@ -2,6 +2,7 @@ import argparse
 import csv
 from datetime import datetime
 from pathlib import Path
+import threading
 import time
 
 from booster_robotics_sdk_python import ChannelFactory, B1LowStateSubscriber
@@ -21,6 +22,7 @@ class ImuLogger:
         self.log_file = None
         self.log_path = None
         self.writer = None
+        self.done = threading.Event()
 
         if log_path is not None:
             log_path = Path(log_path).expanduser()
@@ -63,9 +65,10 @@ class ImuLogger:
             self.close()
             print(
                 f"Reached {self.logged_samples} logged datapoints; "
-                f"stopped logging to {self.log_path}",
+                f"stopped logging to {self.log_path}; exiting",
                 flush=True,
             )
+            self.done.set()
 
     def handle_low_state(self, low_state_msg):
         now = time.time()
@@ -154,12 +157,13 @@ def main():
     print(f"Listening for IMU data on {subscriber.GetChannelName()}")
 
     try:
-        while True:
-            time.sleep(1)
+        while not imu_logger.done.wait(1):
+            pass
     except KeyboardInterrupt:
+        print("\nStopped")
+    finally:
         subscriber.CloseChannel()
         imu_logger.close()
-        print("\nStopped")
 
 
 if __name__ == "__main__":
