@@ -14,10 +14,12 @@ def default_log_path():
 
 
 class ImuLogger:
-    def __init__(self, print_period, log_path, max_log_samples):
+    def __init__(self, print_period, log_path, max_log_samples, log_duration):
         self.print_period = print_period
         self.last_print = 0.0
         self.max_log_samples = max_log_samples
+        self.log_duration = log_duration
+        self.log_start_time = None
         self.logged_samples = 0
         self.log_file = None
         self.log_path = None
@@ -53,28 +55,41 @@ class ImuLogger:
             self.log_file = None
             self.writer = None
 
-    def write_log_row(self, row):
+    def finish_logging(self, message):
+        self.log_file.flush()
+        self.close()
+        print(message, flush=True)
+        self.done.set()
+
+    def write_log_row(self, row, now):
         if self.writer is None:
             return
+
+        if self.log_start_time is None:
+            self.log_start_time = now
 
         self.writer.writerow(row)
         self.logged_samples += 1
 
-        if self.max_log_samples > 0 and self.logged_samples >= self.max_log_samples:
-            self.log_file.flush()
-            self.close()
-            print(
-                f"Reached {self.logged_samples} logged datapoints; "
-                f"stopped logging to {self.log_path}; exiting",
-                flush=True,
+        elapsed = now - self.log_start_time
+        if self.log_duration > 0.0 and elapsed >= self.log_duration:
+            self.finish_logging(
+                f"Reached {elapsed:.2f}s of logged IMU data "
+                f"({self.logged_samples} datapoints); "
+                f"stopped logging to {self.log_path}; exiting"
             )
-            self.done.set()
+        elif self.max_log_samples > 0 and self.logged_samples >= self.max_log_samples:
+            self.finish_logging(
+                f"Reached {self.logged_samples} logged datapoints; "
+                f"stopped logging to {self.log_path}; exiting"
+            )
 
     def handle_low_state(self, low_state_msg):
-        now = time.time()
+        wall_now = time.time()
+        monotonic_now = time.monotonic()
         imu = low_state_msg.imu_state
         row = [
-            f"{now:.6f}",
+            f"{wall_now:.6f}",
             f"{imu.rpy[0]:.9f}",
             f"{imu.rpy[1]:.9f}",
             f"{imu.rpy[2]:.9f}",
@@ -86,12 +101,12 @@ class ImuLogger:
             f"{imu.acc[2]:.9f}",
         ]
 
-        self.write_log_row(row)
+        self.write_log_row(row, monotonic_now)
 
-        if now - self.last_print < self.print_period:
+        if monotonic_now - self.last_print < self.print_period:
             return
 
-        self.last_print = now
+        self.last_print = monotonic_now
         print(
             "rpy: "
             f"{imu.rpy[0]: .6f}, {imu.rpy[1]: .6f}, {imu.rpy[2]: .6f} | "
@@ -115,8 +130,8 @@ def parse_args():
     parser.add_argument(
         "--print-period",
         type=float,
-        default=0.2,
-        help="Seconds between terminal prints. Default: 0.2.",
+        default=0.1,
+        help="Seconds between terminal prints. Default: 0.1.",
     )
     parser.add_argument(
         "--log",
@@ -133,19 +148,31 @@ def parse_args():
     parser.add_argument(
         "--max-log-samples",
         type=int,
-        default=200,
-        help="Stop CSV logging after this many datapoints. Use 0 for unlimited. Default: 200.",
+        default=0,
+        help="Stop CSV logging after this many datapoints. Use 0 for unlimited. Default: 0.",
+    )
+    parser.add_argument(
+        "--log-duration",
+        type=float,
+        default=10.0,
+        help="Stop CSV logging after this many seconds. Use 0 for unlimited. Default: 10.0.",
     )
     args = parser.parse_args()
     if args.max_log_samples < 0:
         parser.error("--max-log-samples must be 0 or greater")
+    if args.log_duration < 0.0:
+        parser.error("--log-duration must be 0 or greater")
+    if args.print_period <= 0.0:
+        parser.error("--print-period must be positive")
     return args
 
 
 def main():
     args = parse_args()
     log_path = None if args.no_log else args.log
-    imu_logger = ImuLogger(args.print_period, log_path, args.max_log_samples)
+    imu_logger = ImuLogger(
+        args.print_period, log_path, args.max_log_samples, args.log_duration
+    )
 
     if args.network_interface:
         ChannelFactory.Instance().Init(0, args.network_interface)
